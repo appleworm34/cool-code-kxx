@@ -14,11 +14,10 @@ def spy():
     
     # parse json input
     data = request.get_json()
-    print(data)
     
-    networks = data.get("networks")
+    # networks = data.get("networks")
     
-    result = find_extra_channels(networks)
+    result = find_extra_channels(data)
     
     return result, 200
 
