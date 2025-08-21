@@ -33,154 +33,197 @@ def spy():
 # Strategy: right-hand wall following, cruise at m=+1, cardinal moves only.
 # ---- Maze/heading utilities ----
 
+
 GOAL_CELLS = {(7,7),(7,8),(8,7),(8,8)}
-DIRS = ['N','E','S','W']
 VEC  = {'N':(0,1), 'E':(1,0), 'S':(0,-1), 'W':(-1,0)}
 RIGHT = {'N':'E','E':'S','S':'W','W':'N'}
 LEFT  = {'N':'W','W':'S','S':'E','E':'N'}
 BACK  = {'N':'S','S':'N','E':'W','W':'E'}
+SIDES = ['N','E','S','W']
+SIDE_VEC = {'N':(0,1),'E':(1,0),'S':(0,-1),'W':(-1,0)}
 
 def in_bounds(x,y): return 0 <= x < 16 and 0 <= y < 16
 def is_goal_cell(c): return c in GOAL_CELLS
 
-# ---- Controller state ----
-
 @dataclass
 class MouseState:
-    cell: tuple[int,int] = (0,0)  # cell coords (0..15, 0..15), start at bottom-left
+    cell: tuple[int,int] = (0,0)
     heading: str = 'N'
-    momentum: int = 0             # our intended policy: 0 or +1
-    walls: set = None             # {(x,y,'N'|'E'|'S'|'W')}
+    momentum: int = 0
+    # walls: {(x,y,'N'|'E'|'S'|'W')} means a wall on that edge from cell (x,y)
+    walls: set = None
 
     def __post_init__(self):
         if self.walls is None:
             self.walls = set()
-
 # ---- Core controller ----
 
 class MicroMouseController:
     def __init__(self):
         self.state = MouseState()
 
-    # --- sensors (array: [-90, -45, 0, +45, +90], 1=wall within 12cm) ---
+    # ---- sensing helpers (array [-90,-45,0,+45,+90], 1=wall) ----
     def _front_blocked(self, sd): return (sd[2] == 1)
     def _right_blocked(self, sd): return (sd[4] == 1)
     def _left_blocked (self, sd): return (sd[0] == 1)
 
     def _mark_wall(self, side):
-        # Optional map-building (not required for base solve)
         x,y = self.state.cell
         h = self.state.heading
         side_dir = {'F': h, 'R': RIGHT[h], 'L': LEFT[h]}[side]
         self.state.walls.add((x,y,side_dir))
-        dx,dy = VEC[side_dir]
+        dx,dy = SIDE_VEC[side_dir]
         nx,ny = x+dx, y+dy
         if in_bounds(nx,ny):
             self.state.walls.add((nx,ny, BACK[side_dir]))
 
-    def _front_open(self, sd):
+    # ---- map access: is there a wall between cell and neighbor dir? ----
+    def _has_wall(self, cell, dirc):
+        x,y = cell
+        return (x,y,dirc) in self.state.walls
+
+    # ---- flood-fill distances to goal using *known* walls; unknown edges are open ----
+    def _compute_dist(self):
+        INF = 10**9
+        dist = [[INF]*16 for _ in range(16)]
+        dq = deque()
+        for gx,gy in GOAL_CELLS:
+            dist[gx][gy] = 0
+            dq.append((gx,gy))
+        while dq:
+            x,y = dq.popleft()
+            d = dist[x][y]
+            for dirc in SIDES:
+                dx,dy = SIDE_VEC[dirc]
+                nx,ny = x+dx, y+dy
+                if not in_bounds(nx,ny): continue
+                # movement allowed if NO wall on the edge between (x,y) and (nx,ny)
+                # We must check both sides to be safe with partial knowledge.
+                if self._has_wall((x,y), dirc): 
+                    continue
+                if self._has_wall((nx,ny), BACK[dirc]): 
+                    continue
+                if dist[nx][ny] > d + 1:
+                    dist[nx][ny] = d+1
+                    dq.append((nx,ny))
+        return dist
+
+    # ---- choose next neighbor cell that *reduces* flood value ----
+    def _choose_next_dir(self, dist):
         x,y = self.state.cell
-        dx,dy = VEC[self.state.heading]
-        nx,ny = x+dx, y+dy
-        return (not self._front_blocked(sd)) and in_bounds(nx,ny)
+        best = None
+        bestd = 10**9
+        for dirc in SIDES:
+            dx,dy = SIDE_VEC[dirc]
+            nx,ny = x+dx, y+dy
+            if not in_bounds(nx,ny): 
+                continue
+            # block if *known* wall in that direction
+            if self._has_wall((x,y), dirc):
+                continue
+            if dist[nx][ny] < bestd:
+                bestd = dist[nx][ny]
+                best = dirc
+        return best  # returns 'N'|'E'|'S'|'W' or None if boxed in (rare)
 
-    def _right_open(self, sd):
-        rh = RIGHT[self.state.heading]
-        dx,dy = VEC[rh]
-        nx,ny = self.state.cell[0]+dx, self.state.cell[1]+dy
-        return (not self._right_blocked(sd)) and in_bounds(nx,ny)
+    # ---- low-level motion primitives (all tokens legal & simple) ----
+    def _ensure_rest(self):
+        # If cruising (m=1), brake one half-step to stop (F0).
+        toks = []
+        if self.state.momentum > 0:
+            toks.append('F0')    # time-charged half-step; lands at next half-vertex
+            self.state.momentum = 0
+        return toks
 
-    def _left_open(self, sd):
-        lh = LEFT[self.state.heading]
-        dx,dy = VEC[lh]
-        nx,ny = self.state.cell[0]+dx, self.state.cell[1]+dy
-        return (not self._left_blocked(sd)) and in_bounds(nx,ny)
+    def _rotate_to(self, target_heading):
+        # Rotate in-place at rest using 45° increments.
+        # We only use multiples of 90° (two L or two R).
+        seq = []
+        h = self.state.heading
+        # compute clockwise steps in 90° units
+        def idx(d): return {'N':0,'E':1,'S':2,'W':3}[d]
+        cur, tgt = idx(h), idx(target_heading)
+        cw = (tgt - cur) % 4
+        ccw = (cur - tgt) % 4
+        if cw <= ccw:
+            # cw times 90° right => two 'R' per 90°
+            for _ in range(cw):
+                seq += ['R','R']
+            self.state.heading = target_heading
+        else:
+            for _ in range(ccw):
+                seq += ['L','L']
+            self.state.heading = target_heading
+        return seq
 
-    # --- state updates after committing to a 1-cell move ---
-    def _advance_cell(self, heading):
-        x,y = self.state.cell
-        dx,dy = VEC[heading]
-        self.state.cell = (x+dx, y+dy)
-
-    # --- motion templates (each performs exactly 1 cell and ends with m=+1) ---
-    def _move_forward_one_cell(self):
+    def _forward_one_cell(self):
+        # Move exactly one cell forward, end with m=1.
         toks = ['F2','F1'] if self.state.momentum == 0 else ['F1','F1']
-        self._advance_cell(self.state.heading)
+        # update pose
+        dx,dy = VEC[self.state.heading]
+        x,y = self.state.cell
+        self.state.cell = (x+dx, y+dy)
         self.state.momentum = 1
         return toks
 
-    def _turn_right_and_advance_one_cell(self):
-        # moving 90° turn via two 45° rights; ensure we're moving first
-        toks = ['F2','R','R','F1']
-        self.state.heading = RIGHT[self.state.heading]
-        self._advance_cell(self.state.heading)
-        self.state.momentum = 1
-        return toks
-
-    def _turn_left_and_advance_one_cell(self):
-        toks = ['F2','L','L','F1']
-        self.state.heading = LEFT[self.state.heading]
-        self._advance_cell(self.state.heading)
-        self.state.momentum = 1
-        return toks
-
-    def _u_turn_and_advance_one_cell(self):
-        toks = ['F2','R','R','R','R','F1']  # 180° right
-        self.state.heading = BACK[self.state.heading]
-        self._advance_cell(self.state.heading)
-        self.state.momentum = 1
-        return toks
-
-    # --- finishing logic (brake inside goal) ---
     def _finish_if_goal(self):
+        # If we are in any goal cell and currently m=1, brake to 0 inside.
         if is_goal_cell(self.state.cell) and self.state.momentum == 1:
             self.state.momentum = 0
-            return ['F0']  # one timed half-step, momentum -> 0 inside goal
+            return ['F0']
         return []
 
-    # --- main step ---
+    # ---- main step: sense -> map -> flood -> act ----
     def step(self, payload: dict) -> list[str]:
-        # Sync momentum hint from platform, if provided
+        # sync momentum hint
         self.state.momentum = 1 if payload.get("momentum", 0) > 0 else 0
 
         sd = payload.get("sensor_data", [0,0,0,0,0]) or [0,0,0,0,0]
-        # annotate optional walls
+        # Update walls from sensors at current vertex
         if self._front_blocked(sd): self._mark_wall('F')
         if self._right_blocked(sd): self._mark_wall('R')
         if self._left_blocked (sd): self._mark_wall('L')
 
-        right_open = self._right_open(sd)
-        front_open = self._front_open(sd)
-        left_open  = self._left_open(sd)
+        # Compute flood distances from current known map
+        dist = self._compute_dist()
+        # Pick best neighbor direction (toward lower distance)
+        desired = self._choose_next_dir(dist)
 
         tokens: list[str] = []
 
-        # Hallway batching: walls both sides & front open → stride 2 cells
-        if (not right_open) and (not left_open) and front_open:
-            for _ in range(2):  # conservative; increase to 3–4 if safe
-                tokens += self._move_forward_one_cell()
-                fin = self._finish_if_goal()
-                if fin:
-                    return tokens + fin
-        else:
-            # Right-hand rule priority
-            if right_open:
-                tokens += self._turn_right_and_advance_one_cell()
-            elif front_open:
-                tokens += self._move_forward_one_cell()
-            elif left_open:
-                tokens += self._turn_left_and_advance_one_cell()
-            else:
-                tokens += self._u_turn_and_advance_one_cell()
+        # If boxed by walls (shouldn't happen often), do a safe U-turn at rest
+        if desired is None:
+            tokens += self._ensure_rest()
+            tokens += self._rotate_to(BACK[self.state.heading])
+            tokens += self._forward_one_cell()
+            fin = self._finish_if_goal()
+            return tokens + fin
 
+        # If we need to turn, do it at rest to avoid moving-turn complexity
+        if desired != self.state.heading:
+            tokens += self._ensure_rest()
+            tokens += self._rotate_to(desired)
+
+        # Move forward. In straight hallways we’ll keep cruising and batch 2 cells.
+        # Check simple hallway condition using known map: left & right walls present.
+        # (Relative to desired heading after rotation)
+        # Determine walls on sides from map
+        h = self.state.heading  # now equals desired
+        left_dir = LEFT[h]
+        right_dir = RIGHT[h]
+        x,y = self.state.cell
+        left_wall  = self._has_wall((x,y), left_dir)
+        right_wall = self._has_wall((x,y), right_dir)
+
+        # stride = 2 cells in a straight corridor
+        stride = 2 if (left_wall and right_wall and not self._has_wall((x,y), h)) else 1
+        for _ in range(stride):
+            tokens += self._forward_one_cell()
             fin = self._finish_if_goal()
             if fin:
                 return tokens + fin
 
-        # Always return at least something (spec: empty instructions invalidates attempt)
-        if not tokens:
-            tokens = ['L','L']  # in-place 90° (useful for re-sensing)
-
+        # Always non-empty
         return tokens
 
 # one controller per game_id (memory store; replace with redis if you need scaling)
