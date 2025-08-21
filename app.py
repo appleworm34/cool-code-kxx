@@ -3,6 +3,7 @@ from spy.spy import find_extra_channels
 from dataclasses import dataclass
 from palindrome.palindrome import solve_evaluate_payload
 from collections import deque
+from piethon.piethon import bfs
 
 app = Flask(__name__)
 
@@ -326,6 +327,39 @@ def palindrome():
     # json.dump(results, sys.stdout)
     # sys.stdout.write("\n")
     return results
+
+
+DIRECTIONS = {
+    "up": (0, -1),
+    "down": (0, 1),
+    "left": (-1, 0),
+    "right": (1, 0),
+}
+
+@app.route("/pie_thon", methods=["POST"])
+def pie_thon():
+    data = request.get_json()
+    snake = data["snake"]
+    pies = data["pies"]
+    grid_size = data["grid_size"]
+
+    all_moves = []
+    for pie in pies:
+        moves = bfs(snake, pie, grid_size)
+        all_moves.extend(moves)
+
+        # simulate snake growth along found path
+        for move in moves:
+            dx, dy = DIRECTIONS[move]
+            head_x, head_y = snake[0]
+            new_head = [head_x + dx, head_y + dy]
+
+            if new_head == pie:  # grow
+                snake = [new_head] + snake
+            else:  # move forward
+                snake = [new_head] + snake[:-1]
+
+    return jsonify({"moves": all_moves})
 
 if __name__ == '__main__':
     app.run()
