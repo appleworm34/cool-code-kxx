@@ -42,6 +42,11 @@ LEFT  = {'N':'W','W':'S','S':'E','E':'N'}
 BACK  = {'N':'S','S':'N','E':'W','W':'E'}
 SIDES = ['N','E','S','W']
 SIDE_VEC = {'N':(0,1),'E':(1,0),'S':(0,-1),'W':(-1,0)}
+# Add once, right after constants (before MouseState):
+BOUNDARY_WALLS = {(x, 0, 'S') for x in range(16)} | \
+                 {(x,15,'N') for x in range(16)} | \
+                 {(0, y,'W') for y in range(16)} | \
+                 {(15,y,'E') for y in range(16)}
 
 def in_bounds(x,y): return 0 <= x < 16 and 0 <= y < 16
 def is_goal_cell(c): return c in GOAL_CELLS
@@ -57,6 +62,7 @@ class MouseState:
     def __post_init__(self):
         if self.walls is None:
             self.walls = set()
+        self.walls |= BOUNDARY_WALLS
 
 class MicroMouseController:
     def __init__(self):
@@ -66,6 +72,12 @@ class MicroMouseController:
     def _front_blocked(self, sd): return (sd[2] == 1)
     def _right_blocked(self, sd): return (sd[4] == 1)
     def _left_blocked (self, sd): return (sd[0] == 1)
+
+    # Helper: does heading point into another goal cell from current cell?
+    def _heading_points_into_goal(self, cell, heading):
+        dx, dy = VEC[heading]
+        nx, ny = cell[0] + dx, cell[1] + dy
+        return in_bounds(nx, ny) and ((nx, ny) in GOAL_CELLS)
 
     def _mark_wall(self, side):
         x,y = self.state.cell
@@ -166,32 +178,99 @@ class MicroMouseController:
         self.state.momentum = 1
         return toks
 
+    # Replace your _finish_if_goal with this goal-aware finisher:
     def _finish_if_goal(self):
-        # If we are in any goal cell and currently m=1, brake to 0 inside.
-        if is_goal_cell(self.state.cell) and self.state.momentum == 1:
-            self.state.momentum = 0
-            return ['F0']
-        return []
+        """
+        Robust finish:
+        - If in goal cell and facing *into* another goal cell -> F0 (stop on interior shared edge).
+        - Else, while in goal:
+            Do a single moving 90° turn toward any adjacent goal cell, advance 1 cell, then F0.
+        """
+        x, y = self.state.cell
+        if (x, y) not in GOAL_CELLS:
+            return []
+
+        # Case A: already facing into interior => clean brake
+        if self._heading_points_into_goal((x, y), self.state.heading):
+            if self.state.momentum > 0:
+                self.state.momentum = 0  # we’ll be 0 after the timed half-step
+                return ['F0']
+            else:
+                # already at rest in goal center (rare); BB at rest would add time, so do nothing
+                return []
+
+        # Case B: re-aim and move *within the goal* before braking.
+        # Find a direction that points to another goal cell.
+        candidate_dirs = []
+        for dirc in ['N','E','S','W']:
+            dx, dy = VEC[dirc]
+            nx, ny = x + dx, y + dy
+            if in_bounds(nx, ny) and (nx, ny) in GOAL_CELLS and not self._has_wall((x, y), dirc):
+                candidate_dirs.append(dirc)
+
+        if not candidate_dirs:
+            # Fallback: if boxed (shouldn’t happen in a valid goal), just stop if moving.
+            return ['F0'] if self.state.momentum > 0 else []
+
+        target = candidate_dirs[0]
+
+        toks = []
+        # We will allow a *moving* 90° turn here (legal since m<=1) to avoid a brake that could
+        # place us on a non-interior boundary mid-edge.
+        # Determine right/left 90° sequence toward target:
+        def turn_seq(cur, tgt):
+            order = ['N','E','S','W']
+            ci, ti = order.index(cur), order.index(tgt)
+            cw = (ti - ci) % 4
+            ccw = (ci - ti) % 4
+            if cw <= ccw:
+                return ['R','R']  # 90° right
+            else:
+                return ['L','L']  # 90° left
+
+        seq = turn_seq(self.state.heading, target)
+
+        if self.state.momentum == 0:
+            # need to “get moving” so the 45° tokens become moving turns (with coast)
+            toks += ['F2']
+
+        # Two moving 45° turns => net 90° toward target, with coasts (m_eff=0.5, legal)
+        toks += seq
+
+        # Complete the cell into the interior goal neighbor and keep m=1
+        toks += ['F1']
+        # Update pose for the 1-cell move we just committed:
+        self.state.heading = target
+        self.state.cell = (x + VEC[target][0], y + VEC[target][1])
+        self.state.momentum = 1
+
+        # Now we’re inside the 2×2 and facing deeper. Brake on the *interior* shared edge.
+        toks += ['F0']
+        self.state.momentum = 0
+        return toks
 
     # ---- main step: sense -> map -> flood -> act ----
-    def step(self, payload: dict) -> list[str]:
-        # sync momentum hint
-        self.state.momentum = 1 if payload.get("momentum", 0) > 0 else 0
+    # In step(), call finisher *immediately after* updating walls and BEFORE planning corridors,
+    # so we finish as soon as we are properly inside:
 
+    def step(self, payload: dict) -> list[str]:
+        self.state.momentum = 1 if payload.get("momentum", 0) > 0 else 0
         sd = payload.get("sensor_data", [0,0,0,0,0]) or [0,0,0,0,0]
-        # Update walls from sensors at current vertex
+
         if self._front_blocked(sd): self._mark_wall('F')
         if self._right_blocked(sd): self._mark_wall('R')
         if self._left_blocked (sd): self._mark_wall('L')
 
-        # Compute flood distances from current known map
-        dist = self._compute_dist()
-        # Pick best neighbor direction (toward lower distance)
-        desired = self._choose_next_dir(dist)
+        # >>> EARLY finish check (handles both immediate and re-aim finish cases)
+        fin = self._finish_if_goal()
+        if fin:
+            return fin
 
+        # ... then proceed with your usual flood + corridor batching ...
+        dist = self._compute_dist()
+        desired = self._choose_next_dir(dist)
         tokens: list[str] = []
 
-        # If boxed by walls (shouldn't happen often), do a safe U-turn at rest
         if desired is None:
             tokens += self._ensure_rest()
             tokens += self._rotate_to(BACK[self.state.heading])
@@ -199,31 +278,24 @@ class MicroMouseController:
             fin = self._finish_if_goal()
             return tokens + fin
 
-        # If we need to turn, do it at rest to avoid moving-turn complexity
         if desired != self.state.heading:
             tokens += self._ensure_rest()
             tokens += self._rotate_to(desired)
 
-        # Move forward. In straight hallways we’ll keep cruising and batch 2 cells.
-        # Check simple hallway condition using known map: left & right walls present.
-        # (Relative to desired heading after rotation)
-        # Determine walls on sides from map
-        h = self.state.heading  # now equals desired
-        left_dir = LEFT[h]
-        right_dir = RIGHT[h]
+        # corridor stride:
+        h = self.state.heading
+        left_dir, right_dir = LEFT[h], RIGHT[h]
         x,y = self.state.cell
         left_wall  = self._has_wall((x,y), left_dir)
         right_wall = self._has_wall((x,y), right_dir)
-
-        # stride = 2 cells in a straight corridor
         stride = 2 if (left_wall and right_wall and not self._has_wall((x,y), h)) else 1
+
         for _ in range(stride):
             tokens += self._forward_one_cell()
             fin = self._finish_if_goal()
             if fin:
                 return tokens + fin
 
-        # Always non-empty
         return tokens
 
 
