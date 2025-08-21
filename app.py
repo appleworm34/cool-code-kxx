@@ -1,4 +1,5 @@
-from flask import Flask
+from flask import Flask, request, jsonify
+from spy.spy import find_extra_channels
 
 app = Flask(__name__)
 
@@ -6,34 +7,19 @@ app = Flask(__name__)
 def hello_world():
     return 'Hello World!'
 
-@app.route('/investigate')
+@app.route('/investigate', methods=['POST'])
 def spy():
-    networks = {
-        "networks": [
-            {
-            "networkId": "network1",
-            "network": [
-                {
-                "spy1": "Karina",
-                "spy2": "Giselle"
-                },
-                {
-                "spy1": "Karina",
-                "spy2": "Winter"
-                },
-                {
-                "spy1": "Karina",
-                "spy2": "Ningning"
-                },
-                {
-                "spy1": "Giselle",
-                "spy2": "Winter"
-                }
-            ]
-            }
-        ]
-    }
-    return 'Hello World!'
+    if not request.is_json:
+        return jsonify({"error": "Request must be JSON"}), 400
+    
+    # parse json input
+    data = request.get_json()
+    
+    networks = data.get("networks")
+    
+    result = find_extra_channels(networks)
+    
+    return result, 200
 
 
 if __name__ == '__main__':

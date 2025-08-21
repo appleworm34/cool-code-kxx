@@ -1,5 +1,6 @@
 from collections import defaultdict
 
+
 def find_extra_channels(networks):
     results = []
 
@@ -59,20 +60,20 @@ def find_extra_channels(networks):
     return {"networks": results}
 
 
-# --- Example Usage ---
-input_data = {
-  "networks": [
-    {
-      "networkId": "network1",
-      "network": [
-        { "spy1": "Karina", "spy2": "Giselle" },
-        { "spy1": "Karina", "spy2": "Winter" },
-        { "spy1": "Karina", "spy2": "Ningning" },
-        { "spy1": "Giselle", "spy2": "Winter" }
-      ]
-    }
-  ]
-}
+# # --- Example Usage ---
+# input_data = {
+#   "networks": [
+#     {
+#       "networkId": "network1",
+#       "network": [
+#         { "spy1": "Karina", "spy2": "Giselle" },
+#         { "spy1": "Karina", "spy2": "Winter" },
+#         { "spy1": "Karina", "spy2": "Ningning" },
+#         { "spy1": "Giselle", "spy2": "Winter" }
+#       ]
+#     }
+#   ]
+# }
 
-output = find_extra_channels(input_data["networks"])
-print(output)
+# output = find_extra_channels(input_data["networks"])
+# print(output)
