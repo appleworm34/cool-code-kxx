@@ -28,25 +28,34 @@ def find_extra_channels(networks):
             return False
 
         def dfs(node, prev):
+            print("visting: "+ node)
             visited.add(node)
             for neigh in graph[node]:
                 if neigh == prev:
                     continue
                 if neigh in visited:
+                    print(graph)
+                    print(neigh)
+                    # print("visited before: "+ neigh)
                     if is_ancestor(node, neigh):
                         # Found a cycle → walk back from node to neigh
+                        # print("ancestor: "+ node + neigh)
                         x = node
                         while x != neigh and x in parent:
                             p = parent[x]
                             if (x, p) in edge_set:
+                                print("x&p: "+ x + p) 
                                 cycle_edges.add((x, p))
                             elif (p, x) in edge_set:
+                                print("x&p: "+ x + p) 
                                 cycle_edges.add((p, x))
                             x = p
                         # include the closing edge
                         if (node, neigh) in edge_set:
+                            print("closing:" + node + neigh)
                             cycle_edges.add((node, neigh))
                         elif (neigh, node) in edge_set:
+                            print("closing:" + node + neigh)
                             cycle_edges.add((neigh, node))
                 else:
                     parent[neigh] = node

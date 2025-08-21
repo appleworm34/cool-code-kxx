@@ -1,9 +1,77 @@
 ###
-POST http://localhost:8000/investigate
+# POST http://localhost:8000/investigate
+# Content-Type: application/json
+
+# [
+#     {"networkId": "2a97847c-2cf2-4fdc-96d3-ab109983f1c6", "network": [{
+#   "spy1": "Donald Duck",
+#   "spy2": "Scrooge McDuck"
+# },
+# {
+#   "spy1": "Mickey Mouse",
+#   "spy2": "Scrooge McDuck"
+# },
+# {
+#   "spy1": "Mickey Mouse",
+#   "spy2": "Simba"
+# },
+# {
+#   "spy1": "Mickey Mouse",
+#   "spy2": "Chip"
+# },
+# {
+#   "spy1": "Goofy",
+#   "spy2": "Minnie Mouse"
+# },
+# {
+#   "spy1": "Mickey Mouse",
+#   "spy2": "Goofy"
+# },
+# {
+#   "spy1": "Pluto",
+#   "spy2": "Dale"
+# },
+# {
+#   "spy1": "Pluto",
+#   "spy2": "Simba"
+# },
+# {
+#   "spy1": "Daisy Duck",
+#   "spy2": "Scrooge McDuck"
+# },
+# {
+#   "spy1": "Chip",
+#   "spy2": "Scrooge McDuck"
+# }
+# ]}, 
+#     {"networkId": "92db8f10-be03-4e2e-83cd-d945303bc92f", "network": [{"spy1": "Sue Storm", "spy2": "Ben Grimm"}, {"spy1": "Reed Richards", "spy2": "Sue Storm"}, {"spy1": "Reed Richards", "spy2": "Johnny Storm"}, {"spy1": "Johnny Storm", "spy2": "Ben Grimm"}]}, 
+#     {"networkId": "475053df-7bc6-48d4-8885-224ff3e8098c", "network": [{"spy1": "Tony Stark", "spy2": "Bruce Banner"}, {"spy1": "Tony Stark", "spy2": "Natasha Romanoff"}, {"spy1": "Steve Rogers", "spy2": "Thor Odinson"}, {"spy1": "Tony Stark", "spy2": "Thor Odinson"}, {"spy1": "Bruce Banner", "spy2": "Thor Odinson"}]},
+#     {
+#   "networkId": "3919e783-94a1-4079-bcc4-a80e7a86d8d7",
+#   "network": [
+#     { "spy1": "Mickey Mouse", "spy2": "Pluto" },
+#     { "spy1": "Goofy", "spy2": "Pluto" },
+#     { "spy1": "Donald Duck", "spy2": "Pluto" },
+#     { "spy1": "Mickey Mouse", "spy2": "Minnie Mouse" },
+#     { "spy1": "Minnie Mouse", "spy2": "Goofy" }
+#   ]
+# }
+
+#   ]
+
+POST http://localhost:8000/micro-mouse
 Content-Type: application/json
 
-[
-    {"networkId": "2a97847c-2cf2-4fdc-96d3-ab109983f1c6", "network": [{"spy1": "Erik Lensherr", "spy2": "Scott Summers"}, {"spy1": "Charles Xavier", "spy2": "Scott Summers"}, {"spy1": "Charles Xavier", "spy2": "Erik Lensherr"}]}, 
-    {"networkId": "92db8f10-be03-4e2e-83cd-d945303bc92f", "network": [{"spy1": "Sue Storm", "spy2": "Ben Grimm"}, {"spy1": "Reed Richards", "spy2": "Sue Storm"}, {"spy1": "Reed Richards", "spy2": "Johnny Storm"}, {"spy1": "Johnny Storm", "spy2": "Ben Grimm"}]}, 
-    {"networkId": "475053df-7bc6-48d4-8885-224ff3e8098c", "network": [{"spy1": "Tony Stark", "spy2": "Bruce Banner"}, {"spy1": "Tony Stark", "spy2": "Natasha Romanoff"}, {"spy1": "Steve Rogers", "spy2": "Thor Odinson"}, {"spy1": "Tony Stark", "spy2": "Thor Odinson"}, {"spy1": "Bruce Banner", "spy2": "Thor Odinson"}]}
-]
+{
+  "game_id": uuid, // unique id for the game
+  "sensor_data": [1, 1, 0, 1, 1],
+  // sensors at -90°, -45°, 0°, +45°, +90°; range up to 12 cm from the mouse center
+  "is_crashed": false,
+  "total_time_ms": 0, // total time of all runs
+  "goal_reached": false, // true if the mouse is in the goal's interior at 0 momentum for run
+  "goal_time_ms": null, // run_time_ms to reach goal for run
+  "best_time_ms": null, // best goal_time_ms of all runs
+  "run_time_ms": 0, // time from momentum 0 at center of start cell to goal_reached
+  "run": 0, // increases by 1 whenever center of start cell is reached at 0 momentum
+  "momentum": 0
+}

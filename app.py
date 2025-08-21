@@ -1,5 +1,7 @@
 from flask import Flask, request, jsonify
 from spy.spy import find_extra_channels
+from mouse.mouse import choose_instructions
+from mouse.mouse_gpt import handle_post
 
 app = Flask(__name__)
 
@@ -26,6 +28,13 @@ def spy():
     
     return result, 200
 
+
+@app.route("/micro-mouse", methods=["POST"])
+def micro_mouse():
+    body = request.get_json(force=True)
+    response = handle_post(body)
+    
+    return jsonify(response)
 
 if __name__ == '__main__':
     app.run()
