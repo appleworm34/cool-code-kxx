@@ -186,7 +186,7 @@ class MicroMouseController:
 # one controller per game_id (memory store; replace with redis if you need scaling)
 CONTROLLERS: dict[str, MicroMouseController] = {}
 
-@app.post("/micromouse")
+@app.post("/micro-mouse")
 def micromouse():
     payload = request.get_json(force=True) or {}
 
