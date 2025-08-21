@@ -225,6 +225,27 @@ class MicroMouseController:
         # Always non-empty
         return tokens
 
+
+# one controller per game_id (memory store; replace with redis if you need scaling)
+CONTROLLERS: dict[str, MicroMouseController] = {}
+
+@app.post("/micro-mouse")
+def micromouse():
+    payload = request.get_json(force=True) or {}
+
+    gid = str(payload.get("game_id") or "default")
+    ctrl = CONTROLLERS.get(gid)
+    if ctrl is None:
+        ctrl = MicroMouseController()
+        CONTROLLERS[gid] = ctrl
+
+    # If the platform signals a crash or total time exhaustion, you could clear state:
+    # if payload.get("is_crashed") or (payload.get("total_time_ms", 0) >= 60000):
+    #     CONTROLLERS.pop(gid, None)
+
+    instr = ctrl.step(payload)
+    return jsonify({"instructions": instr, "end": False})
+
 @app.route("/palindrome", methods=["POST"])
 def palindrome():
     data = request.get_json(force=True)
