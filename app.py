@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from spy.spy import find_extra_channels
 from dataclasses import dataclass
+from palindrome.palindrome import solve_evaluate_payload
 
 app = Flask(__name__)
 
@@ -245,6 +246,14 @@ def micromouse():
 
     instr = ctrl.step(payload)
     return jsonify({"instructions": instr, "end": False})
+
+@app.route("/palindrome", methods=["POST"])
+def palindrome():
+    data = request.get_json(force=True)
+    results = solve_evaluate_payload(data)
+    # json.dump(results, sys.stdout)
+    # sys.stdout.write("\n")
+    return results
 
 if __name__ == '__main__':
     app.run()
