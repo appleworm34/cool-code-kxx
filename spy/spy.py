@@ -9,7 +9,6 @@ def find_extra_channels(networks):
 
         # Build adjacency list
         graph = defaultdict(list)
-        # Store edges exactly as given in input order
         input_edges = [(e["spy1"], e["spy2"]) for e in edges]
         edge_set = set(input_edges)
 
@@ -19,27 +18,36 @@ def find_extra_channels(networks):
         # Track which edges are in cycles
         cycle_edges = set()
 
+        def is_ancestor(node, target):
+            """Check if target is an ancestor of node in DFS tree."""
+            x = node
+            while x is not None:
+                if x == target:
+                    return True
+                x = parent.get(x)
+            return False
+
         def dfs(node, prev):
             visited.add(node)
             for neigh in graph[node]:
                 if neigh == prev:
                     continue
                 if neigh in visited:
-                    # Found a cycle → walk back from node to neigh
-                    x = node
-                    while x != neigh and x in parent:
-                        p = parent[x]
-                        # preserve original edge format
-                        if (x, p) in edge_set:
-                            cycle_edges.add((x, p))
-                        elif (p, x) in edge_set:
-                            cycle_edges.add((p, x))
-                        x = p
-                    # include the closing edge
-                    if (node, neigh) in edge_set:
-                        cycle_edges.add((node, neigh))
-                    elif (neigh, node) in edge_set:
-                        cycle_edges.add((neigh, node))
+                    if is_ancestor(node, neigh):
+                        # Found a cycle → walk back from node to neigh
+                        x = node
+                        while x != neigh and x in parent:
+                            p = parent[x]
+                            if (x, p) in edge_set:
+                                cycle_edges.add((x, p))
+                            elif (p, x) in edge_set:
+                                cycle_edges.add((p, x))
+                            x = p
+                        # include the closing edge
+                        if (node, neigh) in edge_set:
+                            cycle_edges.add((node, neigh))
+                        elif (neigh, node) in edge_set:
+                            cycle_edges.add((neigh, node))
                 else:
                     parent[neigh] = node
                     dfs(neigh, node)
@@ -52,6 +60,7 @@ def find_extra_channels(networks):
         # DFS over all components
         for node in graph:
             if node not in visited:
+                parent[node] = None
                 dfs(node, None)
 
         # Keep edges only if they appear in cycles, preserving input order
