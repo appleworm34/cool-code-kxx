@@ -14,6 +14,7 @@ def spy():
     
     # parse json input
     data = request.get_json()
+    print(data)
     
     networks = data.get("networks")
     
