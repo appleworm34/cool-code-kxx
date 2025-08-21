@@ -1,6 +1,5 @@
 from collections import defaultdict
 
-
 def find_extra_channels(networks):
     results = []
 
@@ -10,15 +9,15 @@ def find_extra_channels(networks):
 
         # Build adjacency list
         graph = defaultdict(list)
-        for e in edges:
-            u, v = e["spy1"], e["spy2"]
-            graph[u].append(v)
-            graph[v].append(u)
+        # Store edges exactly as given in input order
+        input_edges = [(e["spy1"], e["spy2"]) for e in edges]
+        edge_set = set(input_edges)
 
-        # DFS to find cycles
         visited = set()
         parent = {}
-        cycles = []
+
+        # Track which edges are in cycles
+        cycle_edges = set()
 
         def dfs(node, prev):
             visited.add(node)
@@ -26,30 +25,40 @@ def find_extra_channels(networks):
                 if neigh == prev:
                     continue
                 if neigh in visited:
-                    # Found a cycle → reconstruct path
-                    cycle = set()
+                    # Found a cycle → walk back from node to neigh
                     x = node
                     while x != neigh and x in parent:
-                        cycle.add((min(x, parent[x]), max(x, parent[x])))
-                        x = parent[x]
-                    cycle.add((min(node, neigh), max(node, neigh)))
-                    cycles.append(cycle)
+                        p = parent[x]
+                        # preserve original edge format
+                        if (x, p) in edge_set:
+                            cycle_edges.add((x, p))
+                        elif (p, x) in edge_set:
+                            cycle_edges.add((p, x))
+                        x = p
+                    # include the closing edge
+                    if (node, neigh) in edge_set:
+                        cycle_edges.add((node, neigh))
+                    elif (neigh, node) in edge_set:
+                        cycle_edges.add((neigh, node))
                 else:
                     parent[neigh] = node
                     dfs(neigh, node)
 
+        # Build graph
+        for u, v in input_edges:
+            graph[u].append(v)
+            graph[v].append(u)
+
+        # DFS over all components
         for node in graph:
             if node not in visited:
                 dfs(node, None)
 
-        # Collect all edges in cycles
-        extra = set()
-        for cycle in cycles:
-            extra.update(cycle)
-
-        # Convert back to required format
+        # Keep edges only if they appear in cycles, preserving input order
         extra_channels = [
-            {"spy1": u, "spy2": v} for u, v in extra
+            {"spy1": u, "spy2": v}
+            for (u, v) in input_edges
+            if (u, v) in cycle_edges
         ]
 
         results.append({
@@ -58,22 +67,3 @@ def find_extra_channels(networks):
         })
 
     return {"networks": results}
-
-
-# # --- Example Usage ---
-# input_data = {
-#   "networks": [
-#     {
-#       "networkId": "network1",
-#       "network": [
-#         { "spy1": "Karina", "spy2": "Giselle" },
-#         { "spy1": "Karina", "spy2": "Winter" },
-#         { "spy1": "Karina", "spy2": "Ningning" },
-#         { "spy1": "Giselle", "spy2": "Winter" }
-#       ]
-#     }
-#   ]
-# }
-
-# output = find_extra_channels(input_data["networks"])
-# print(output)

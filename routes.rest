@@ -1,0 +1,9 @@
+###
+POST http://localhost:8000/investigate
+Content-Type: application/json
+
+[
+    {"networkId": "2a97847c-2cf2-4fdc-96d3-ab109983f1c6", "network": [{"spy1": "Erik Lensherr", "spy2": "Scott Summers"}, {"spy1": "Charles Xavier", "spy2": "Scott Summers"}, {"spy1": "Charles Xavier", "spy2": "Erik Lensherr"}]}, 
+    {"networkId": "92db8f10-be03-4e2e-83cd-d945303bc92f", "network": [{"spy1": "Sue Storm", "spy2": "Ben Grimm"}, {"spy1": "Reed Richards", "spy2": "Sue Storm"}, {"spy1": "Reed Richards", "spy2": "Johnny Storm"}, {"spy1": "Johnny Storm", "spy2": "Ben Grimm"}]}, 
+    {"networkId": "475053df-7bc6-48d4-8885-224ff3e8098c", "network": [{"spy1": "Tony Stark", "spy2": "Bruce Banner"}, {"spy1": "Tony Stark", "spy2": "Natasha Romanoff"}, {"spy1": "Steve Rogers", "spy2": "Thor Odinson"}, {"spy1": "Tony Stark", "spy2": "Thor Odinson"}, {"spy1": "Bruce Banner", "spy2": "Thor Odinson"}]}
+]
